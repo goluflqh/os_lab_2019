@@ -14,12 +14,15 @@
 
 #include "find_min_max.h"
 #include "utils.h"
+#define DEFAULT_FILENAME "./default_file.txt"
 
 int main(int argc, char **argv) {
   int seed = -1;
   int array_size = -1;
   int pnum = -1;
   bool with_files = false;
+
+  char* file_dir;
 
   while (true) {
     int current_optind = optind ? optind : 1;
@@ -42,16 +45,31 @@ int main(int argc, char **argv) {
             seed = atoi(optarg);
             // your code here
             // error handling
+		if (seed <=0)
+	    {
+		    printf("Invalid arguments (seed)!\n");
+		    exit(EXIT_FAILURE);
+	    }
             break;
           case 1:
             array_size = atoi(optarg);
             // your code here
             // error handling
-            break;
+           if (array_size <= 0)
+	    {
+		printf("Invalid arguments (array_size)!\n");
+		exit(EXIT_FAILURE);
+	    }
+	 break;
           case 2:
             pnum = atoi(optarg);
             // your code here
             // error handling
+	    if  (pnum <= 0)
+		{
+			printf("Invalid arguments (pnum)!\n");
+			exit(EXIT_FAILURE);
+		}
             break;
           case 3:
             with_files = true;
@@ -72,7 +90,14 @@ int main(int argc, char **argv) {
         printf("getopt returned character code 0%o?\n", c);
     }
   }
-
+   // get file name (directory) from argv
+	 if (with_files) {
+		if (optind < argc) {
+		file_dir = argv[optind];
+		optind++;
+	}
+	else file_dir = DEFAULT_FILENAME;
+}
   if (optind < argc) {
     printf("Has at least one no option argument\n");
     return 1;
@@ -87,14 +112,31 @@ int main(int argc, char **argv) {
   int *array = malloc(sizeof(int) * array_size);
   GenerateArray(array, array_size, seed);
   int active_child_processes = 0;
+  //print array
+  for (int i =0; i < array_size ; i++)
+	  printf("%d ",array[i]);
+  printf("\n");
 
   struct timeval start_time;
   gettimeofday(&start_time, NULL);
+  
+  FILE *f = NULL;
+  int p[2];
+  if (with_files) {
+        // open file for writing
+        f = fopen(file_dir, "w");
+    } else if (pipe(p) < 0) {
+    printf("There was an error while generating pipes!\n"); 
+   return 1;
+}
+
+pid_t* pid_list =malloc(sizeof(pid_t)* array_size);
 
   for (int i = 0; i < pnum; i++) {
     pid_t child_pid = fork();
     if (child_pid >= 0) {
       // successful fork
+	pid_list[active_child_processes] = child_pid;
       active_child_processes += 1;
       if (child_pid == 0) {
         // child process
@@ -103,8 +145,10 @@ int main(int argc, char **argv) {
 
         if (with_files) {
           // use files here
+	if (f) fprintf(f , "%d\n",array[i]);
         } else {
           // use pipe here
+	write(p[1], &array[i], sizeof(int));
         }
         return 0;
       }
@@ -114,31 +158,44 @@ int main(int argc, char **argv) {
       return 1;
     }
   }
-
+	if (f){
+	fclose(f);
+	f = NULL;
+	}
   while (active_child_processes > 0) {
     // your code here
-
-    active_child_processes -= 1;
+	wait(NULL); // blocks parent process until any of its children has finished
+        active_child_processes -= 1;
   }
 
   struct MinMax min_max;
   min_max.min = INT_MAX;
   min_max.max = INT_MIN;
 
+
+  if(with_files) f = fopen(file_dir,"r");
+  int value =0 ;
   for (int i = 0; i < pnum; i++) {
     int min = INT_MAX;
     int max = INT_MIN;
 
     if (with_files) {
       // read from files
+	if (f) fscanf(f, "%d", &value);
     } else {
       // read from pipes
+	read(p[0], &value, sizeof(int));
     }
+	if (value < min) min = value;
+	if (value > max) max = value;
 
     if (min < min_max.min) min_max.min = min;
     if (max > min_max.max) min_max.max = max;
   }
-
+	 if (f){
+        fclose(f);
+        f = NULL;
+        }
   struct timeval finish_time;
   gettimeofday(&finish_time, NULL);
 
